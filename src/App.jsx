@@ -459,6 +459,140 @@ const NowAssistDrawer = ({ student, open, onClose }) => {
 };
 
 /* ═══════════════════════════════════════════════════════════
+   PLAYBOOK PANEL — Early Alert Intervention
+   Vertical view matching CSM Workspace Playbook UX
+   Left: stage picker with completion counts
+   Right: activity cards with assignee, status, expandable content
+   ═══════════════════════════════════════════════════════════ */
+const PLAYBOOK_STAGES = [
+  { id: "assess", label: "Assess", activities: [
+    { id: "a1", title: "Review matched risk criteria", type: "list" },
+    { id: "a2", title: "Check compounding factors", type: "list" },
+    { id: "a3", title: "Review student academic history", type: "form" },
+  ]},
+  { id: "outreach", label: "Outreach", activities: [
+    { id: "b1", title: "Send student outreach message", assignee: "advisor", type: "message" },
+    { id: "b2", title: "Notify course faculty", assignee: "system", type: "checklist" },
+    { id: "b3", title: "Schedule advising appointment", assignee: "advisor", type: "form" },
+  ]},
+  { id: "intervene", label: "Intervene", activities: [
+    { id: "c1", title: "Conduct advising meeting", assignee: "advisor", type: "form" },
+    { id: "c2", title: "Assign academic support resources", assignee: "advisor", type: "checklist" },
+    { id: "c3", title: "Log intervention plan", assignee: "advisor", type: "form" },
+  ]},
+  { id: "monitor", label: "Monitor", activities: [
+    { id: "d1", title: "Set follow-up check-in", assignee: "advisor", type: "form" },
+    { id: "d2", title: "Review updated data", type: "list" },
+    { id: "d3", title: "Evaluate for closure or escalation", assignee: "advisor", type: "decision" },
+  ]},
+];
+
+const PlaybookPanel = ({ student }) => {
+  const [activeStage, setActiveStage] = useState("assess");
+  const [expandedActivity, setExpandedActivity] = useState("a1");
+  const [completedActivities, setCompletedActivities] = useState({});
+  const [completedStages, setCompletedStages] = useState({});
+
+  if (!student) return null;
+  const stage = PLAYBOOK_STAGES.find(s => s.id === activeStage);
+  const stageIdx = PLAYBOOK_STAGES.findIndex(s => s.id === activeStage);
+  const advInit = student.advisor ? student.advisor.split(" ").slice(1).map(n => n[0]).join("") : "??";
+
+  const completeActivity = (actId) => {
+    const nc = { ...completedActivities, [actId]: true };
+    setCompletedActivities(nc);
+    const acts = stage.activities;
+    const idx = acts.findIndex(a => a.id === actId);
+    if (idx < acts.length - 1) {
+      setExpandedActivity(acts[idx + 1].id);
+    } else {
+      setCompletedStages({ ...completedStages, [activeStage]: true });
+      if (stageIdx < PLAYBOOK_STAGES.length - 1) {
+        const next = PLAYBOOK_STAGES[stageIdx + 1];
+        setActiveStage(next.id);
+        setExpandedActivity(next.activities[0].id);
+      }
+    }
+  };
+
+  const renderContent = (act) => {
+    const mc = (student.matched || []).map(m => { const c = CRITERIA.find(cr => cr.id === m.id); return c ? { ...c, actualValue: m.value } : null; }).filter(Boolean);
+    if (act.id === "a1") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s2 }}>{mc.map(c => (<div key={c.id} style={{ display: "flex", alignItems: "center", gap: T.s3, padding: `${T.s2} ${T.s3}`, background: T.surface1, borderRadius: T.rSm }}><Badge variant={c.weight === 3 ? "critical" : c.weight === 2 ? "warning" : "neutral"} style={{ fontSize: 10, minWidth: 28, justifyContent: "center" }}>{c.weight}</Badge><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{c.id}: {c.name}</div><div style={{ fontSize: 12, color: T.textTertiary }}>Value: {c.actualValue} · Threshold: {c.threshold}</div></div><Badge variant={c.source === "Neo4j" ? "purple" : "info"} style={{ fontSize: 10 }}>{c.source}</Badge></div>))}</div>);
+    if (act.id === "a2") return (<div style={{ padding: T.s3, background: mc.length > 1 ? T.warningBg : T.positiveBg, borderRadius: T.rSm, fontSize: 13, lineHeight: 1.6 }}>{mc.length > 1 ? <><strong>Compounding risk:</strong> {mc.length} criteria matched simultaneously. Consider broader intervention.</> : <>Only one criterion matched — isolated signal.</>}</div>);
+    if (act.id === "a3") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s2 }}>{[{ l: "Student", v: student.name }, { l: "Program", v: student.program }, { l: "Year", v: student.year }, { l: "Advisor", v: student.advisor }, { l: "Prior alerts", v: student.prevTier ? "1 prior" : "None" }].map(f => (<div key={f.l} style={{ display: "flex", justifyContent: "space-between", padding: `${T.s1} 0`, borderBottom: `1px solid ${T.chromeDividerSubtle}`, fontSize: 13 }}><span style={{ color: T.textTertiary }}>{f.l}</span><span style={{ fontWeight: 500 }}>{f.v}</span></div>))}</div>);
+    if (act.id === "b1") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s3 }}><div><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>To</div><div style={{ padding: `${T.s2} ${T.s3}`, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, background: T.surface1 }}>{student.name.split(" ")[0].toLowerCase()}.{(student.name.split(" ")[1] || "").toLowerCase()}@university.edu</div></div><div><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Subject</div><input style={{ width: "100%", boxSizing: "border-box", padding: `${T.s2} ${T.s3}`, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, fontFamily: T.font }} defaultValue={`Academic Alert — ${student.course}`} /></div><div><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Message</div><textarea style={{ width: "100%", boxSizing: "border-box", padding: T.s3, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, fontFamily: T.font, minHeight: 80, resize: "vertical", lineHeight: 1.6 }} defaultValue={`Dear ${student.name.split(" ")[0]},\n\nYour advisor has been notified about your current performance in ${student.course}. This is not disciplinary — our goal is to connect you with support.\n\nPlease schedule a meeting with ${student.advisor}.\n\nAcademic Advising`} /></div></div>);
+    if (act.id === "b2") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s2 }}>{[{ l: "Faculty notification sent", done: true, auto: true }, { l: "Faculty acknowledged", done: false }, { l: "Faculty observations added", done: false }].map((it, i) => (<div key={i} style={{ display: "flex", alignItems: "center", gap: T.s3, padding: `${T.s2} ${T.s3}`, background: it.done ? T.positiveBg : T.surface1, borderRadius: T.rSm, border: `1px solid ${it.done ? T.positive + "33" : T.chromeDivider}` }}><div style={{ width: 18, height: 18, borderRadius: T.rSm, border: `2px solid ${it.done ? T.positive : T.chromeDivider}`, background: it.done ? T.positive : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>{it.done && <I n="check" s={12} c="#fff" sw={3} />}</div><span style={{ fontSize: 13, flex: 1 }}>{it.l}</span>{it.auto && <Badge variant="neutral" style={{ fontSize: 10 }}>Auto</Badge>}</div>))}</div>);
+    if (act.id === "b3") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s3 }}>{[{ l: "Type", v: "Virtual" }, { l: "Date & Time", v: "2026-03-20  10:00 AM" }, { l: "Duration", v: "30 min" }].map(f => (<div key={f.l}><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>{f.l}</div><div style={{ padding: `${T.s2} ${T.s3}`, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, display: "flex", justifyContent: "space-between", cursor: "pointer" }}><span>{f.v}</span><I n="chevDown" s={14} c={T.textTertiary} /></div></div>))}<div><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Notes</div><textarea style={{ width: "100%", boxSizing: "border-box", padding: T.s3, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, fontFamily: T.font, minHeight: 50, resize: "vertical" }} defaultValue="We'll discuss your progress and support options." /></div></div>);
+    if (act.id === "c1") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s3 }}><div style={{ display: "flex", gap: T.s4 }}>{["Meeting held", "Student attended"].map(q => (<div key={q} style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>{q}</div><div style={{ display: "flex", gap: T.s1 }}>{["Yes", "No"].map(o => (<div key={o} style={{ padding: `${T.s1} ${T.s3}`, border: `1px solid ${o === "Yes" ? T.brandPrimary : T.chromeDivider}`, borderRadius: T.rSm, fontSize: 12, fontWeight: 600, color: o === "Yes" ? T.brandPrimary : T.textTertiary, background: o === "Yes" ? T.infoBg : "transparent", cursor: "pointer" }}>{o}</div>))}</div></div>))}</div><div><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Discussion summary</div><textarea style={{ width: "100%", boxSizing: "border-box", padding: T.s3, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, fontFamily: T.font, minHeight: 60, resize: "vertical" }} placeholder="Key points, concerns, agreed actions..." /></div><div><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Student commitment</div><div style={{ display: "flex", gap: T.s2 }}>{["Engaged", "Partially Engaged", "Unresponsive"].map(o => (<div key={o} style={{ padding: `${T.s2} ${T.s3}`, border: `1px solid ${o === "Engaged" ? T.positive : T.chromeDivider}`, borderRadius: T.rSm, fontSize: 12, fontWeight: 600, color: o === "Engaged" ? T.positive : T.textTertiary, background: o === "Engaged" ? T.positiveBg : "transparent", cursor: "pointer" }}>{o}</div>))}</div></div></div>);
+    if (act.id === "c2") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s2 }}>{["Tutoring services", "Writing center", "Study skills workshop", "Mental health / counseling", "Financial aid check-in"].map((r, i) => { const on = i === 0 || i === 2; return (<div key={r} style={{ display: "flex", alignItems: "center", gap: T.s3, padding: `${T.s2} ${T.s3}`, background: on ? T.positiveBg : T.surface1, borderRadius: T.rSm, border: `1px solid ${on ? T.positive + "33" : T.chromeDivider}`, cursor: "pointer" }}><div style={{ width: 18, height: 18, borderRadius: T.rSm, border: `2px solid ${on ? T.positive : T.chromeDivider}`, background: on ? T.positive : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>{on && <I n="check" s={12} c="#fff" sw={3} />}</div><span style={{ fontSize: 13 }}>{r}</span></div>); })}</div>);
+    if (act.id === "c3") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s3 }}><div><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Intervention summary</div><textarea style={{ width: "100%", boxSizing: "border-box", padding: T.s3, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, fontFamily: T.font, minHeight: 60, resize: "vertical" }} placeholder="Summarize the plan..." /></div><div style={{ display: "flex", gap: T.s3 }}><div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Timeline</div><div style={{ padding: `${T.s2} ${T.s3}`, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, display: "flex", justifyContent: "space-between" }}><span>4 weeks</span><I n="chevDown" s={14} c={T.textTertiary} /></div></div><div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>Next check-in</div><input style={{ width: "100%", boxSizing: "border-box", padding: `${T.s2} ${T.s3}`, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, fontFamily: T.font }} defaultValue="2026-04-01" /></div></div></div>);
+    if (act.id === "d1") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s3 }}>{[{ l: "Check-in date", v: "2026-04-01" }, { l: "Method", v: "Meeting" }].map(f => (<div key={f.l}><div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: T.s1 }}>{f.l}</div><div style={{ padding: `${T.s2} ${T.s3}`, border: `1px solid ${T.chromeDivider}`, borderRadius: T.rSm, fontSize: 13, display: "flex", justifyContent: "space-between" }}><span>{f.v}</span><I n="chevDown" s={14} c={T.textTertiary} /></div></div>))}</div>);
+    if (act.id === "d2") { const ea = (student.matched || []).find(m => m.id === "EA01"); return (<div style={{ display: "flex", gap: T.s5 }}><div style={{ flex: 1, textAlign: "center", padding: T.s3, background: T.surface1, borderRadius: T.rSm }}><div style={{ fontSize: 11, color: T.textTertiary }}>At alert</div><div style={{ fontSize: 22, fontWeight: 300, color: T.negative }}>{ea ? ea.value : "—"}</div></div><div style={{ display: "flex", alignItems: "center" }}>→</div><div style={{ flex: 1, textAlign: "center", padding: T.s3, background: T.positiveBg, borderRadius: T.rSm, border: `1px solid ${T.positive}33` }}><div style={{ fontSize: 11, color: T.textTertiary }}>Current</div><div style={{ fontSize: 22, fontWeight: 300, color: T.positive }}>61%</div></div></div>); }
+    if (act.id === "d3") return (<div style={{ display: "flex", flexDirection: "column", gap: T.s2 }}>{[{ l: "Close — Improved", d: "Above threshold", icon: "check", color: T.positive, bg: T.positiveBg, sel: true }, { l: "Continue monitoring", d: "Another check-in", icon: "refresh", color: T.brandPrimary, bg: T.infoBg }, { l: "Escalate", d: "Senior advisor", icon: "arrowUp", color: T.negative, bg: T.negativeBg }, { l: "Close — Other", d: "Withdrawn / transferred", icon: "flag", color: T.textTertiary, bg: T.surface1 }].map(d => (<div key={d.l} style={{ display: "flex", alignItems: "center", gap: T.s3, padding: `${T.s3} ${T.s4}`, border: `1px solid ${d.sel ? d.color + "44" : T.chromeDivider}`, borderRadius: T.rMd, cursor: "pointer", background: d.sel ? d.bg : "transparent" }}><div style={{ width: 28, height: 28, borderRadius: "50%", background: d.bg, display: "flex", alignItems: "center", justifyContent: "center" }}><I n={d.icon} s={14} c={d.color} /></div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{d.l}</div><div style={{ fontSize: 12, color: T.textTertiary }}>{d.d}</div></div></div>))}</div>);
+    return null;
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 0, minHeight: 480 }}>
+      {/* LEFT: Vertical stage picker */}
+      <div style={{ width: 210, minWidth: 210, borderRight: `1px solid ${T.chromeDivider}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `${T.s3} ${T.s4}`, marginBottom: T.s1 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Early Alert Intervention</span>
+          <div style={{ display: "flex", gap: T.s1 }}><I n="filter" s={15} c={T.textTertiary} /><I n="chevDown" s={15} c={T.textTertiary} /></div>
+        </div>
+        {PLAYBOOK_STAGES.map((s, i) => {
+          const isAct = activeStage === s.id;
+          const isDone = completedStages[s.id];
+          const dc = s.activities.filter(a => completedActivities[a.id]).length;
+          return (
+            <div key={s.id} onClick={() => { setActiveStage(s.id); setExpandedActivity(s.activities[0].id); }}
+              style={{ display: "flex", alignItems: "center", gap: T.s3, padding: `${T.s3} ${T.s4}`, cursor: "pointer", borderLeft: isAct ? `3px solid ${T.brandTeal}` : "3px solid transparent", background: isAct ? "rgba(79,209,197,.06)" : "transparent" }}>
+              <div style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${isDone ? T.positive : isAct ? T.brandTeal : T.chromeDivider}`, background: isDone ? T.positive : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {isDone && <I n="check" s={13} c="#fff" sw={3} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: isAct ? 700 : 500, color: isAct ? T.textPrimary : T.textSecondary }}>{s.label}</div>
+                <div style={{ fontSize: 12, color: T.textTertiary }}>{dc} of {s.activities.length} complete</div>
+              </div>
+              {isAct && !isDone && <Badge variant="info" style={{ fontSize: 10, padding: "1px 6px" }}>{s.activities.length - dc}</Badge>}
+            </div>
+          );
+        })}
+      </div>
+      {/* RIGHT: Activities */}
+      <div style={{ flex: 1, paddingLeft: T.s5, minWidth: 0 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: T.s4 }}>{stage.label}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: T.s3 }}>
+          {stage.activities.map((act) => {
+            const isExp = expandedActivity === act.id;
+            const isDone = completedActivities[act.id];
+            return (
+              <div key={act.id} style={{ border: `1px solid ${T.chromeDivider}`, borderRadius: T.rMd, overflow: "hidden", background: T.white }}>
+                <div onClick={() => setExpandedActivity(isExp ? null : act.id)} style={{ display: "flex", alignItems: "center", gap: T.s3, padding: `${T.s3} ${T.s4}`, cursor: "pointer" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: T.s2 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${isDone ? T.positive : T.brandPrimary}`, background: isDone ? T.positive : "transparent", flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: isDone ? T.positive : T.brandPrimary, fontWeight: 500 }}>{isDone ? "Complete" : "In Progress"}</span>
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: T.brandPrimary, marginTop: 2 }}><span style={{ color: T.textTertiary, fontWeight: 400 }}>{stage.label} : </span>{act.title}</div>
+                    {act.assignee && (<div style={{ display: "flex", alignItems: "center", gap: T.s2, marginTop: 3 }}><div style={{ width: 20, height: 20, borderRadius: "50%", background: T.headerBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,.85)" }}>{act.assignee === "system" ? "SY" : advInit}</div><span style={{ fontSize: 12, color: T.textTertiary }}>Assigned to {act.assignee === "system" ? "System" : student.advisor}</span></div>)}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: T.s2 }}>
+                    {isDone && <I n="check" s={16} c={T.positive} />}
+                    <I n={isExp ? "chevDown" : "chevRight"} s={16} c={T.textTertiary} />
+                  </div>
+                </div>
+                {isExp && (<div style={{ padding: `0 ${T.s4} ${T.s4}`, borderTop: `1px solid ${T.chromeDividerSubtle}` }}><div style={{ paddingTop: T.s3 }}>{renderContent(act)}<div style={{ display: "flex", gap: T.s2, marginTop: T.s4, justifyContent: "flex-end" }}>{act.type === "message" && <Btn variant="secondary" small>Request Info</Btn>}<Btn variant="teal" small onClick={() => completeActivity(act.id)}>{act.type === "message" ? "Post" : act.type === "decision" ? "Review Complete" : "Mark Complete"}</Btn></div></div></div>)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
    SCREEN 1: RISK DASHBOARD
    ═══════════════════════════════════════════════════════════ */
 const DashboardScreen = ({ onViewAlerts }) => {
@@ -836,6 +970,7 @@ const CaseDetailScreen = ({ student, onBack, onOpenAssist }) => {
               {[
                 { id: "criteria", label: `Matched Criteria (${matchedCriteria.length})` },
                 { id: "all", label: "All 10 Criteria" },
+                { id: "playbook", label: "Playbook" },
                 { id: "activity", label: "Audit Log" },
               ].map(tab => (
                 <button key={tab.id} onClick={() => setInterventionTab(tab.id)} style={{
@@ -898,6 +1033,11 @@ const CaseDetailScreen = ({ student, onBack, onOpenAssist }) => {
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {/* TAB: Playbook */}
+              {interventionTab === "playbook" && (
+                <PlaybookPanel student={student} />
               )}
 
               {/* TAB: Audit Log */}
